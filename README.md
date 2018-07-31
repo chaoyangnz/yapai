@@ -1,4 +1,4 @@
-# promise
+# promiselite
 
 A minimal Promises/A+ complaint `Promise` implementation with 200 lines of code. This implementation is not production ready but for learning the in-depth mechanism of a Promise and its contract to users.
 
