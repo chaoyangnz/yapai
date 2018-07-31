@@ -20,7 +20,7 @@ function identity(promise) { return (value) => resolve(promise, value) }
 function throwner(promise) { return (reason) => reject(promise, reason) }
 function dummy() { return new Promise(() => {})}
 
-export function fulfill(promise, value) {
+function fulfill(promise, value) {
   if (promise._state !== PENDING) return
   promise._state = FULFILLED
   promise._value = value
