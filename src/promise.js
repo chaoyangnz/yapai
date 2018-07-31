@@ -20,7 +20,7 @@ function identity(promise) { return (value) => resolve(promise, value) }
 function throwner(promise) { return (reason) => reject(promise, reason) }
 function dummy() { return new Promise(() => {})}
 
-function fulfill(promise, value) {
+export function fulfill(promise, value) {
   if (promise._state !== PENDING) return
   promise._state = FULFILLED
   promise._value = value
@@ -232,7 +232,7 @@ class Promise {
       
     }
     const promises = arr.filter(item => item instanceof Promise)
-    const length = promises.length
+    let length = promises.length
     if (length === 0) {
       fulfill(promise2, undefined); return
     }

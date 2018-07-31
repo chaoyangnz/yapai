@@ -1,4 +1,4 @@
-const p = require('../src/promise')
+const p = require('../lib/promise')
 
 module.exports = {
   resolved: (value) => {
