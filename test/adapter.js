@@ -22,7 +22,7 @@ module.exports = {
       reject: (reason) => {
         if (call) {
           call = false;
-          promise._reject(reason);
+          p.reject(promise, reason);
         }
         
       }

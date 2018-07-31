@@ -17,27 +17,50 @@ function isFunction(fn) { return typeof fn === 'function' }
 function isObjectOrFunction(x) { if (x === null) return false; const type = typeof x; return type === 'function' || type === 'object' }
 function assert(bool) { if (!bool) throw new Error('bug') }
 
+function __fulfill__(promise, value) {
+  if (promise._isSettled()) return
+  promise._state = FULFILLED
+  promise._value = value
+  promise._resolveQueue.forEach(({ onFulfilled, promise2 }) => promise._invokeHandler(onFulfilled, promise2))
+  __afterSettled__(promise)
+}
+
+function __reject__(promise, reason) {
+  if (promise._isSettled()) return
+  promise._state = REJECTED
+  promise._value = reason
+  promise._rejectQueue.forEach(({ onRejected, promise2 }) => promise._invokeHandler(onRejected, promise2))
+  __afterSettled__(promise)
+}
+
+function __afterSettled__(promise) {
+  promise._finallyQueue.forEach(promise._invokeFinally)
+  promise._resolveQueue = [] // clear
+  promise._rejectQueue = [] // clear
+  promise._finallyQueue = [] // clear
+}
+
 // promise resolution procedure, denote as [[Resolve]](promise, x)
 function __resolve__(promise, x) {
   if (promise === x) { // 2.3.1 If promise and x refer to the same object, reject promise with a TypeError as the reason
-    promise._reject(new TypeError('promise and x refer to the same object')); return
+    __reject__(promise, new TypeError('promise and x refer to the same object')); return
   }
   if (x instanceof Promise) { // 2.3.2 If x is a promise, adopt its state
     if (x._state === PENDING) { // 2.3.2.1 If x is pending, promise must remain pending until x is fulfilled or rejected
-      x.then(promise._fulfill, promise._reject); return
+      x.then((value) => __resolve__(promise, value), (reason) => __reject__(promise, reason)); return
     }
     if (x._state === FULFILLED) { // 2.3.2.2 If/when x is fulfilled, fulfill promise with the same value
-      promise._fulfill(x._value); return
+      __fulfill__(promise, x._value); return
     }
     if (x._state === REJECTED) { // 2.3.2.3 If/when x is rejected, reject promise with the same reason
-      promise._reject(x._value); return
+      __reject__(promise, x._value); return
     }
   } else if (isObjectOrFunction(x)) { // 2.3.3 Otherwise, if x is an object or function
     let then
     try {
       then = x.then // 2.3.3.1 Let then be x.then
     } catch (e) {
-      promise._reject(e); return // 2.3.3.2 If retrieving the property x.then results in a thrown exception e, reject promise with e as the reason
+      __reject__(promise, e); return // 2.3.3.2 If retrieving the property x.then results in a thrown exception e, reject promise with e as the reason
     }
 
     if (isFunction(then)) { // 2.3.3.3 If then is a function, call it with x as this, first argument resolvePromise, and second argument rejectPromise
@@ -53,20 +76,20 @@ function __resolve__(promise, x) {
           function rejectPromise(r) { // 2.3.3.3.2 If/when rejectPromise is called with a reason r, reject promise with r
             if (called === true) return // 2.3.3.3.3 If both resolvePromise and rejectPromise are called, or multiple calls to the same argument are made, the first call takes precedence, and any further calls are ignored
             called = true
-            promise._reject(r)
+            __reject__(promise, r)
           }); return
       } catch (e) { // 2.3.3.3.4 If calling then throws an exception e,
         if (called) {
           return // 2.3.3.3.4.1 If resolvePromise or rejectPromise have been called, ignore it.
         } else { // 2.3.3.3.4.2 Otherwise, reject promise with e as the reason
-          promise._reject(e); return
+          __reject__(promise, e); return
         }
       }
     } else { // 2.3.3.4 If then is not a function, fulfill promise with x
-      promise._fulfill(x); return
+      __fulfill__(promise, x); return
     }
   } else { // 2.3.4 If x is not an object or function, fulfill promise with x
-    promise._fulfill(x); return
+    __fulfill__(promise, x); return
   }
 }
 
@@ -89,16 +112,15 @@ class Promise {
     this._rejectQueue = []
     this._finallyQueue = []
     // bind instance methods
-    this._fulfill = this._fulfill.bind(this)
-    this._reject = this._reject.bind(this)
-    this._resolve = (value) => __resolve__(this, value)
+    const resolve = (value) => __resolve__(this, value)
+    const reject = (reason) => __reject__(this, reason)
     try {
       // executed immediate
       // the executor is called before the Promise constructor even returns the created object
-      executor(this._resolve, this._reject, this)
+      executor(resolve, reject)
     } catch (err) {
       // reject implicitly if any arror in executor
-      this._reject(err)
+      __reject__(this, err)
     }
   }
 
@@ -113,11 +135,11 @@ class Promise {
     const promise1 = this
     if (!isFunction(onFulfilled) && promise1._state === FULFILLED) {
       return promise1
-      // promise2._fulfill(promise1._value) // immediately-fulfilled
+      // __fulfill__(promise2, promise1._value) // immediately-fulfilled
     }
     if (!isFunction(onRejected) && promise1._state === REJECTED) {
       return promise1
-      // promise2._reject(promise1._value) // immediately-rejected
+      // __reject__(promise2, promise1._value) // immediately-rejected
     }
 
     const promise2 = new Promise((resolve, reject) => {})
@@ -132,7 +154,7 @@ class Promise {
     if (promise1._state === PENDING) {
       onFulfilled = isFunction(onFulfilled) ? onFulfilled : (value) => __resolve__(promise2, value)
       promise1._queueResolve({ onFulfilled, promise2 })
-      onRejected = isFunction(onRejected) ? onRejected : (reason) => promise2._reject(reason)
+      onRejected = isFunction(onRejected) ? onRejected : (reason) => __reject__(promise2, reason)
       promise1._queueReject({ onRejected, promise2 })
     }
     return promise2
@@ -182,14 +204,14 @@ class Promise {
     const promise2 = new Promise((resolve, reject) => {})
     const arr = Array.from(iterable)
     if (arr.length === 0 || arr.every(item => !item instanceof Promise)) {
-      promise2._fulfill(); return
+      __fulfill__(promise2); return
     }
     const promises = arr.filter(item => item instanceof Promise)
     const length = promises.length
     function doResolve(value) {
       length--
       if (length === 0) {
-        promise2._fulfill(value)
+        __fulfill__(promise2, value)
       }
     }
     for (const promise1 of promises) {
@@ -200,29 +222,6 @@ class Promise {
   /* ================ INTERNAL IMPLEMENTATION ========================*/
   _isSettled() {
     return this._state === FULFILLED || this._state === REJECTED
-  }
-
-  _fulfill(value) {
-    if (this._isSettled()) return
-    this._state = FULFILLED
-    this._value = value
-    this._resolveQueue.forEach(({ onFulfilled, promise2 }) => this._invokeHandler(onFulfilled, promise2))
-    this._afterSettled()
-  }
-
-  _reject(reason) {
-    if (this._isSettled()) return
-    this._state = REJECTED
-    this._value = reason
-    this._rejectQueue.forEach(({ onRejected, promise2 }) => this._invokeHandler(onRejected, promise2))
-    this._afterSettled()
-  }
-
-  _afterSettled() {
-    this._finallyQueue.forEach(this._invokeFinally)
-    this._resolveQueue = [] // clear
-    this._rejectQueue = [] // clear
-    this._finallyQueue = [] // clear
   }
 
   _queueResolve(then) {
@@ -249,7 +248,7 @@ class Promise {
       try {
         x = handler.call(noThis(handler), this._value)
       } catch (err) {
-        promise._reject(err); return
+        __reject__(promise, err); return
       }
       __resolve__(promise, x)
     }, 0)
@@ -263,7 +262,7 @@ class Promise {
       try {
         x = onFinally.call(noThis(onFinally))
       } catch (err) {
-        promise._reject(err); return
+        _reject__(promise, err); return
       }
       __resolve__(promise, x)
     }, 0)
@@ -272,5 +271,6 @@ class Promise {
 
 module.exports = {
   Promise,
-  resolve: __resolve__
+  resolve: __resolve__,
+  reject: __reject__
 }
