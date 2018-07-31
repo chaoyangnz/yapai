@@ -91,10 +91,11 @@ class Promise {
     // bind instance methods
     this._fulfill = this._fulfill.bind(this)
     this._reject = this._reject.bind(this)
+    this._resolve = (value) => __resolve__(this, value)
     try {
       // executed immediate
       // the executor is called before the Promise constructor even returns the created object
-      executor(this._fulfill, this._reject, this)
+      executor(this._resolve, this._reject, this)
     } catch (err) {
       // reject implicitly if any arror in executor
       this._reject(err)
@@ -110,23 +111,26 @@ class Promise {
    */
   then(onFulfilled, onRejected) {
     const promise1 = this
+    if (!isFunction(onFulfilled) && promise1._state === FULFILLED) {
+      return promise1
+      // promise2._fulfill(promise1._value) // immediately-fulfilled
+    }
+    if (!isFunction(onRejected) && promise1._state === REJECTED) {
+      return promise1
+      // promise2._reject(promise1._value) // immediately-rejected
+    }
+
     const promise2 = new Promise((resolve, reject) => {})
     if (isFunction(onFulfilled) && promise1._state === FULFILLED) {
       promise1._invokeHandler(onFulfilled, promise2) // eventually-fulfilled
-    }
-    if (!isFunction(onFulfilled) && promise1._state === FULFILLED) {
-      promise2._fulfill(promise1._value) // immediately-fulfilled
     }
 
     if (isFunction(onRejected) && promise1._state === REJECTED) {
       promise1._invokeHandler(onRejected, promise2) // eventually-rejected
     }
-    if (!isFunction(onRejected) && promise1._state === REJECTED) {
-      promise2._reject(promise1._value) // immediately-rejected
-    }
     
     if (promise1._state === PENDING) {
-      onFulfilled = isFunction(onFulfilled) ? onFulfilled : (value) => promise2._fulfill(value)
+      onFulfilled = isFunction(onFulfilled) ? onFulfilled : (value) => __resolve__(promise2, value)
       promise1._queueResolve({ onFulfilled, promise2 })
       onRejected = isFunction(onRejected) ? onRejected : (reason) => promise2._reject(reason)
       promise1._queueReject({ onRejected, promise2 })
@@ -266,4 +270,7 @@ class Promise {
   }
 }
 
-module.exports = Promise
+module.exports = {
+  Promise,
+  resolve: __resolve__
+}
