@@ -1,4 +1,3 @@
-// import Promise from '../src/promise'
 const p = require('../src/promise')
 
 module.exports = {
@@ -9,21 +8,14 @@ module.exports = {
     return new p.Promise((resolve, reject) => reject(reason))
   },
   deferred: () => {
-    var call = true
     const promise = new p.Promise((resolve, reject) => {})
     return {
       promise, 
       resolve: (value) => {
-        if (call) {
-          call = false;
-          p.resolve(promise, value);
-        }
+        p.resolve(promise, value);
       }, 
       reject: (reason) => {
-        if (call) {
-          call = false;
-          p.reject(promise, reason);
-        }
+        p.reject(promise, reason);
       }
     }
   }
