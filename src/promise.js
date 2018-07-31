@@ -8,7 +8,7 @@ function noThis(fn) {
     throw new TypeError("expected function");
   try {
     fn.caller; // expected to throw
-    return global
+    return global || window
   } catch(e) {
     return undefined
   }
