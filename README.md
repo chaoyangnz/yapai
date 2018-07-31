@@ -1,4 +1,4 @@
-# YAPAI (Yet Another Promise/A+ Implementation)
+## YAPAI (Yet Another Promise/A+ Implementation)
 
 
 ![npm](https://img.shields.io/npm/dt/yapai.svg)
@@ -7,11 +7,11 @@
 
 A minimal Promises/A+ complaint `Promise` implementation with 200 lines of code. This implementation is not production ready but for learning the in-depth mechanism of a Promise and its contract to users.
 
-# Build
+## Build
 
 `npm run build`
 
-# Promises/A+ tests
+## Promises/A+ tests
 
 `npm run test`
 
