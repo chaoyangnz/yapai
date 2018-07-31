@@ -24,7 +24,6 @@ module.exports = {
           call = false;
           p.reject(promise, reason);
         }
-        
       }
     }
   }

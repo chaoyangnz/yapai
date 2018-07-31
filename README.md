@@ -6,6 +6,8 @@ A minimal Promises/A+ complaint `Promise` implementation with 200 lines of code.
 
 `npm run test`
 
-Currently I don't find a good fix to get the correct support of `thenable`. So this is test result:
+Currently this library passed all the test cases of Promises/A+ (https://github.com/promises-aplus/promises-tests). 
+
+This is test result:
 
 ![](promises_aplus_result.png)
