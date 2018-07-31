@@ -231,6 +231,11 @@ class Promise {
     this._rejectQueue.push(then)
   }
 
+  _queueFinally(final) {
+    if (this._isSettled()) return
+    this._finallyQueue.push(final)
+  }
+
   // aync invocation
   _invokeHandler(handler, promise) {
     assert(this._isSettled())
@@ -246,31 +251,17 @@ class Promise {
     }, 0)
   }
 
-  _queueFinally(final) {
-    if (this._isSettled()) return
-    this._finallyQueue.push(final)
-  }
-
   // aync invocation
   _invokeFinally(onFinally, promise) {
+    assert(this._isSettled())
     setTimeout(() => {
-      assert(this._isSettled())
-      const x = undefined
+      let x
       try {
         x = onFinally.call(noThis(onFinally))
       } catch (err) {
         promise._reject(err); return
       }
-
-      if (x instanceof Promise) {
-        x.then(promise._fulfill, promise._reject); return
-      }
-      if (this._state === FULFILLED) {
-        promise._resolve(this._value); return
-      }
-      if (this._state === REJECTED) {
-        promise._reject(this._value); return
-      }
+      __resolve__(promise, x)
     }, 0)
   }
 }
