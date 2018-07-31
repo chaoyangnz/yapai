@@ -1,3 +1,5 @@
+// import Promise from '../src/promise'
+const Promise = require('../src/promise')
 
 module.exports = {
   resolved: (value) => {

@@ -1,0 +1,27 @@
+{
+  "name": "promise",
+  "version": "1.0.0",
+  "description": "Minimal implementation of a Promises/A+ promise",
+  "main": "index.js",
+  "scripts": {
+    "test": "promises-aplus-tests test/adapter.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chaoyangnz/promise.git"
+  },
+  "keywords": [
+    "promise",
+    "Promises/A+"
+  ],
+  "author": "Chao Yang",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/chaoyangnz/promise/issues"
+  },
+  "homepage": "https://github.com/chaoyangnz/promise#readme",
+  "devDependencies": {
+    "promises-aplus-tests": "^2.1.2"
+  },
+  "dependencies": {}
+}

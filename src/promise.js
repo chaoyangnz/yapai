@@ -3,9 +3,16 @@
 // Refer to https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise
 
 // utilities
-function noThis() { return this }
-function identity(arg) { return arg }
-function thrower(arg) { throw new Error(arg) }
+function noThis(fn) {
+  if (typeof fn != "function")
+    throw new TypeError("expected function");
+  try {
+    fn.caller; // expected to throw
+    return global
+  } catch(e) {
+    return undefined
+  }
+}
 function isFunction(fn) { return typeof fn === 'function' }
 function isObjectOrFunction(x) { if (x === null) return false; const type = typeof x; return type === 'function' || type === 'object' }
 function assert(bool) { if (!bool) throw new Error('bug') }
@@ -35,30 +42,31 @@ function __resolve__(promise, x) {
 
     if (isFunction(then)) { // 2.3.3.3 If then is a function, call it with x as this, first argument resolvePromise, and second argument rejectPromise
       let called = false
-      const resolvePromise = (y) => { // 2.3.3.3.1 If/when resolvePromise is called with a value y, run [[Resolve]](promise, y)
-        if (called) return // 2.3.3.3.3 If both resolvePromise and rejectPromise are called, or multiple calls to the same argument are made, the first call takes precedence, and any further calls are ignored
-        __resolve__(promise, y)
-        called = true
-      }
-      const rejectPromise = (r) => { // 2.3.3.3.2 If/when rejectPromise is called with a reason r, reject promise with r
-        if (called) return // 2.3.3.3.3 If both resolvePromise and rejectPromise are called, or multiple calls to the same argument are made, the first call takes precedence, and any further calls are ignored
-        promise._reject(r)
-        called = true
-      }
       try {
-        then.call(x, resolvePromise, rejectPromise); return
+        then.call(
+          x, 
+          function resolvePromise(y) { // 2.3.3.3.1 If/when resolvePromise is called with a value y, run [[Resolve]](promise, y)
+            if (called === true) return // 2.3.3.3.3 If both resolvePromise and rejectPromise are called, or multiple calls to the same argument are made, the first call takes precedence, and any further calls are ignored
+            called = true
+            __resolve__(promise, y)
+          }, 
+          function rejectPromise(r) { // 2.3.3.3.2 If/when rejectPromise is called with a reason r, reject promise with r
+            if (called === true) return // 2.3.3.3.3 If both resolvePromise and rejectPromise are called, or multiple calls to the same argument are made, the first call takes precedence, and any further calls are ignored
+            called = true
+            promise._reject(r)
+          }); return
       } catch (e) { // 2.3.3.3.4 If calling then throws an exception e,
         if (called) {
-          // 2.3.3.3.4.1 If resolvePromise or rejectPromise have been called, ignore it.
+          return // 2.3.3.3.4.1 If resolvePromise or rejectPromise have been called, ignore it.
         } else { // 2.3.3.3.4.2 Otherwise, reject promise with e as the reason
-          promise._reject(e)
+          promise._reject(e); return
         }
       }
     } else { // 2.3.3.4 If then is not a function, fulfill promise with x
-      promise._fulfill(x)
+      promise._fulfill(x); return
     }
   } else { // 2.3.4 If x is not an object or function, fulfill promise with x
-    promise._fulfill(x)
+    promise._fulfill(x); return
   }
 }
 
@@ -97,57 +105,50 @@ class Promise {
    * Register
    *
    * @param onFulfilled (value) => {}
-   * @param onRejected (reason => {}
+   * @param onRejected (reason) => {}
    * @return Promise in the pending status
    */
   then(onFulfilled, onRejected) {
-    // const onFulfilledHandler = isFunction(onFulfilled) ? onFulfilled : identity
-    // const onRejectedHandler = isFunction(onRejected) ? onRejected : thrower
-    return new Promise((resolve, reject, promise) => {
-      if (this._state === FULFILLED) {
-        // already fulfilled when register
-        if (isFunction(onFulfilled)) {
-          this._invokeHandler(onFulfilled, promise)
-        } else {
-          promise._fulfill(this._value)
-        }
-      } else if (this._state === REJECTED) {
-        // already rejected when register
-        if (isFunction(onRejected)) {
-          this._invokeHandler(onRejected, promise)
-        } else {
-          promise._reject(this._value)
-        }
-      } else {
-        // pending
-        if (isFunction(onFulfilled)) {
-          this._queueResolve({ onFulfilled, promise })
-        } else {
-          this._queueResolve({ onFulfilled: (value) => promise._fulfill(value), promise })
-        }
-        if (isFunction(onRejected)) {
-          this._queueReject({ onRejected, promise })
-        } else {
-          this._queueReject({ onRejected: (reason) => promise._reject(reason), promise })
-        }
-      }
-    })
+    const promise1 = this
+    const promise2 = new Promise((resolve, reject) => {})
+    if (isFunction(onFulfilled) && promise1._state === FULFILLED) {
+      promise1._invokeHandler(onFulfilled, promise2) // eventually-fulfilled
+    }
+    if (!isFunction(onFulfilled) && promise1._state === FULFILLED) {
+      promise2._fulfill(promise1._value) // immediately-fulfilled
+    }
+
+    if (isFunction(onRejected) && promise1._state === REJECTED) {
+      promise1._invokeHandler(onRejected, promise2) // eventually-rejected
+    }
+    if (!isFunction(onRejected) && promise1._state === REJECTED) {
+      promise2._reject(promise1._value) // immediately-rejected
+    }
+    
+    if (promise1._state === PENDING) {
+      onFulfilled = isFunction(onFulfilled) ? onFulfilled : (value) => promise2._fulfill(value)
+      promise1._queueResolve({ onFulfilled, promise2 })
+      onRejected = isFunction(onRejected) ? onRejected : (reason) => promise2._reject(reason)
+      promise1._queueReject({ onRejected, promise2 })
+    }
+    return promise2
   }
 
   catch(onRejected) {
     return this.then(undefined, onRejected)
   }
 
-  // ??
   finally(onFinally) {
-    const onFinallyHandler = isFunction(onFinally) ? onFinally : identity
-    return new Promise((resolve, reject, promise) => {
-      if (this._isSettled()) {
-        this._invokeFinally(onFinallyHandler, promise)
-      } else {
-        this._queueFinally({ onFinallyHandler, promise })
-      }
-    })
+    const promise1 = this
+    const promise2 = new Promise((resolve, reject) => {})
+    if (isFunction(onFinally) && promise1._isSettled()) {
+      promise1._invokeFinally(onFinally, promise)
+    }
+    if (isFunction(onFinally) && promise1._state === PENDING) {
+      promise1._queueFinally({ onFinally, promise2 })
+    }
+    
+    return promise2
   }
 
   /**
@@ -174,23 +175,22 @@ class Promise {
    * @return Promise
    */
   static all(iterable) {
-    return new Promise((resolve, reject) => {
-      const arr = Array.from(iterable)
-      if (arr.length === 0 || arr.every(item => !item instanceof Promise)) {
-        resolve(); return
+    const promise2 = new Promise((resolve, reject) => {})
+    const arr = Array.from(iterable)
+    if (arr.length === 0 || arr.every(item => !item instanceof Promise)) {
+      promise2._fulfill(); return
+    }
+    const promises = arr.filter(item => item instanceof Promise)
+    const length = promises.length
+    function doResolve(value) {
+      length--
+      if (length === 0) {
+        promise2._fulfill(value)
       }
-      const promises = arr.filter(item => item instanceof Promise)
-      const length = promises.length
-      function doResolve(value) {
-        length--
-        if (length === 0) {
-          resolve(value)
-        }
-      }
-      for (const promise of promises) {
-        promise.then(doResolve, reject)
-      }
-    })
+    }
+    for (const promise1 of promises) {
+      promise1.then(doResolve, promise2._reject)
+    }
   }
 
   /* ================ INTERNAL IMPLEMENTATION ========================*/
@@ -202,8 +202,7 @@ class Promise {
     if (this._isSettled()) return
     this._state = FULFILLED
     this._value = value
-    this._resolveQueue.forEach(({ onFulfilled, promise }) => this._invokeHandler(onFulfilled, promise))
-    this._finallyQueue.forEach(this._invokeFinally)
+    this._resolveQueue.forEach(({ onFulfilled, promise2 }) => this._invokeHandler(onFulfilled, promise2))
     this._afterSettled()
   }
 
@@ -211,15 +210,15 @@ class Promise {
     if (this._isSettled()) return
     this._state = REJECTED
     this._value = reason
-    this._rejectQueue.forEach(({ onRejected, promise }) => this._invokeHandler(onRejected, promise))
-    this._finallyQueue.forEach(this._invokeFinally)
+    this._rejectQueue.forEach(({ onRejected, promise2 }) => this._invokeHandler(onRejected, promise2))
     this._afterSettled()
   }
 
   _afterSettled() {
+    this._finallyQueue.forEach(this._invokeFinally)
     this._resolveQueue = [] // clear
     this._rejectQueue = [] // clear
-    this._finallyQueue = []
+    this._finallyQueue = [] // clear
   }
 
   _queueResolve(then) {
@@ -234,12 +233,12 @@ class Promise {
 
   // aync invocation
   _invokeHandler(handler, promise) {
+    assert(this._isSettled())
     setTimeout(() => {
-      assert(this._isSettled())
       let x
       // invoke handler function
       try {
-        x = handler.call(noThis(), this._value)
+        x = handler.call(noThis(handler), this._value)
       } catch (err) {
         promise._reject(err); return
       }
@@ -258,7 +257,7 @@ class Promise {
       assert(this._isSettled())
       const x = undefined
       try {
-        x = onFinally.call(noThis())
+        x = onFinally.call(noThis(onFinally))
       } catch (err) {
         promise._reject(err); return
       }
@@ -275,3 +274,5 @@ class Promise {
     }, 0)
   }
 }
+
+module.exports = Promise
