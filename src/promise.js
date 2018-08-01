@@ -2,23 +2,30 @@
 // Refer to https://promisesaplus.com/
 // Refer to https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise
 
+const PENDING = 'pending'
+const FULFILLED = 'fulfilled'
+const REJECTED = 'rejected'
+// mock engine PromiseJob queue
+const PromiseJobsQueue = new Map()
+function queueJob(promise, queue, ayncFunc) { PromiseJobsQueue.get(promise)[queue].push(ayncFunc) }
+function runJobs(promise, queue) { PromiseJobsQueue.get(promise)[queue].forEach(ayncFunc => ayncFunc()) }
+function initQueue(promise) { PromiseJobsQueue.set(promise, {resolve: [], reject: [], finally: []}) }
+function cleanQueue(promise) { PromiseJobsQueue.delete(promise) }
+
 // utilities
 function globalObject(fn) {
-  if (typeof fn != "function") throw new TypeError("expected function");
-  try {
-    fn.caller; // expected to throw
-    return global || window
-  } catch(e) {
-    return undefined
-  }
+  if (typeof fn != "function") throw new TypeError("expected function")
+  // expected to throw
+  try { fn.caller  } catch(e) { return undefined}
+  return global || window
 }
 function isFunction(fn) { return typeof fn === 'function' }
 function isObjectOrFunction(x) { if (x === null) return false; const type = typeof x; return type === 'function' || type === 'object' }
-function assert(bool) { if (!bool) throw new Error('bug') }
+function assert(expression) { if (!expression) throw new Error('bug') }
+function dummy() { return new Promise(() => {})}
 function identity(promise) { return (value) => resolve(promise, value) }
 function throwner(promise) { return (reason) => reject(promise, reason) }
-function dummy() { return new Promise(() => {})}
-function asynchronize(handler, promise1, promise2, notFinally = true) { 
+function asyncFunc(handler, promise1, promise2, notFinally = true) { 
   return () => {
     assert(promise1._state !== PENDING)
     setTimeout(() => {
@@ -37,27 +44,22 @@ function fulfill(promise, value) {
   if (promise._state !== PENDING) return
   promise._state = FULFILLED
   promise._value = value
-  promise._resolveQueue.forEach(onFulfilled => onFulfilled())
-  afterSettled(promise)
+  runJobs(promise, 'resolve')
+  runJobs(promise, 'finally')
+  cleanQueue(promise)
 }
 
-function reject(promise, reason) {
+export function reject(promise, reason) {
   if (promise._state !== PENDING) return
   promise._state = REJECTED
   promise._value = reason
-  promise._rejectQueue.forEach(onRejected => onRejected())
-  afterSettled(promise)
-}
-
-function afterSettled(promise) {
-  promise._finallyQueue.forEach(({ onFinally, call }) => call(onFinally))
-  delete promise._resolveQueue
-  delete promise._rejectQueue
-  delete promise._finallyQueue
+  runJobs(promise, 'reject')
+  runJobs(promise, 'finally')
+  cleanQueue(promise)
 }
 
 // promise resolution procedure, denote as [[Resolve]](promise, x)
-function resolve(promise, x) {
+export function resolve(promise, x) {
   if (promise === x) { // 2.3.1 If promise and x refer to the same object, reject promise with a TypeError as the reason
     reject(promise, new TypeError('promise and x refer to the same object')); return
   }
@@ -109,17 +111,11 @@ function resolve(promise, x) {
   }
 }
 
-const PENDING = 'pending'
-const FULFILLED = 'fulfilled'
-const REJECTED = 'rejected'
-
-class Promise {
+export class Promise {
   constructor(executor) {
     this._value = undefined // resolved value or rejection reason
     this._state = PENDING // pending / fulfilled  / rejected
-    this._resolveQueue = []
-    this._rejectQueue = []
-    this._finallyQueue = []
+    initQueue(this)
     try {
       // execute immediately, the executor is called before the Promise constructor even returns the created object
       executor((value) => resolve(this, value), (reason) => reject(this, reason))
@@ -129,21 +125,20 @@ class Promise {
   }
 
   then(onFulfilled, onRejected) {
-    const promise1 = this
-    if (!isFunction(onFulfilled) && promise1._state === FULFILLED) return promise1
-    if (!isFunction(onRejected) && promise1._state === REJECTED) return promise1
-    const promise2 = dummy()
-    if (isFunction(onFulfilled) && promise1._state === FULFILLED) {
-      asynchronize(onFulfilled, promise1, promise2)() // immediately-fulfilled
+    const promise1 = this, promise2 = dummy()
+    if (promise1._state === FULFILLED) {
+      if (!isFunction(onFulfilled)) return promise1
+      else asyncFunc(onFulfilled, promise1, promise2)() // immediately-fulfilled
     }
-    if (isFunction(onRejected) && promise1._state === REJECTED) {
-      asynchronize(onRejected, promise1, promise2)() // immediately-rejected
+    if (promise1._state === REJECTED) {
+      if (!isFunction(onRejected)) return promise1
+      else asyncFunc(onRejected, promise1, promise2)() // immediately-rejected
     }
     if (promise1._state === PENDING) {
       onFulfilled = isFunction(onFulfilled) ? onFulfilled : identity(promise2)
-      promise1._resolveQueue.push(asynchronize(onFulfilled, promise1, promise2)) // eventually-fulfilled
+      queueJob(promise1, 'resolve', asyncFunc(onFulfilled, promise1, promise2)) // eventually-fulfilled
       onRejected = isFunction(onRejected) ? onRejected : throwner(promise2)
-      promise1._rejectQueue.push(asynchronize(onRejected, promise1, promise2)) // eventually-rejected
+      queueJob(promise1, 'reject', asyncFunc(onRejected, promise1, promise2)) // eventually-rejected
     }
     return promise2
   }
@@ -156,10 +151,10 @@ class Promise {
     const promise1 = this
     const promise2 = dummy()
     if (isFunction(onFinally) && promise1._state !== PENDING) {
-      asynchronize(onFinally)()
+      asyncFunc(onFinally)()
     }
     if (isFunction(onFinally) && promise1._state === PENDING) {
-      promise1._finallyQueue.push(asynchronize(onFinally, promise1, promise2, true))
+      queueJob(promise1, 'finally', asyncFunc(onFinally, promise1, promise2, true))
     }
     return promise2
   }
@@ -195,4 +190,4 @@ class Promise {
   }
 }
 
-export {Promise, resolve, reject}
+export default Promise
