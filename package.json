@@ -1,6 +1,6 @@
 {
   "name": "yapai",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Yet Another Promise/A+ Implementation - a minimal implementation of a Promises/A+ promise",
   "main": "lib/promise.js",
   "scripts": {
@@ -29,12 +29,18 @@
   "dependencies": {},
   "babel": {
     "presets": [
-      ["env", {
-        "targets": {
-          "browsers": ["last 2 versions", "safari >= 7"],
-          "node": "current"
+      [
+        "env",
+        {
+          "targets": {
+            "browsers": [
+              "last 2 versions",
+              "safari >= 7"
+            ],
+            "node": "current"
+          }
         }
-      }]
+      ]
     ]
   }
 }

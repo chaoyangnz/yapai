@@ -4,8 +4,7 @@
 
 // utilities
 function globalObject(fn) {
-  if (typeof fn != "function")
-    throw new TypeError("expected function");
+  if (typeof fn != "function") throw new TypeError("expected function");
   try {
     fn.caller; // expected to throw
     return global || window
@@ -19,12 +18,26 @@ function assert(bool) { if (!bool) throw new Error('bug') }
 function identity(promise) { return (value) => resolve(promise, value) }
 function throwner(promise) { return (reason) => reject(promise, reason) }
 function dummy() { return new Promise(() => {})}
+function asynchronize(handler, promise1, promise2, notFinally = true) { 
+  return () => {
+    assert(promise1._state !== PENDING)
+    setTimeout(() => {
+      let x
+      try { // invoke handler function
+        x = handler.call(globalObject(handler), notFinally ? promise1._value : undefined)
+      } catch (err) {
+        reject(promise2, err); return
+      }
+      resolve(promise2, x)
+    }, 0)
+  }
+}
 
 function fulfill(promise, value) {
   if (promise._state !== PENDING) return
   promise._state = FULFILLED
   promise._value = value
-  promise._resolveQueue.forEach(({ onFulfilled, call }) => call(onFulfilled))
+  promise._resolveQueue.forEach(onFulfilled => onFulfilled())
   afterSettled(promise)
 }
 
@@ -32,7 +45,7 @@ function reject(promise, reason) {
   if (promise._state !== PENDING) return
   promise._state = REJECTED
   promise._value = reason
-  promise._rejectQueue.forEach(({ onRejected, call }) => call(onRejected))
+  promise._rejectQueue.forEach(onRejected => onRejected())
   afterSettled(promise)
 }
 
@@ -101,16 +114,9 @@ const FULFILLED = 'fulfilled'
 const REJECTED = 'rejected'
 
 class Promise {
-
-  /**
-   * @param excutor (resolve, reject) => {}
-   */
   constructor(executor) {
-    // resolved value or rejection reason
-    this._value = undefined
-
-    // pending / fulfilled  / rejected
-    this._state = PENDING
+    this._value = undefined // resolved value or rejection reason
+    this._state = PENDING // pending / fulfilled  / rejected
     this._resolveQueue = []
     this._rejectQueue = []
     this._finallyQueue = []
@@ -118,56 +124,26 @@ class Promise {
       // execute immediately, the executor is called before the Promise constructor even returns the created object
       executor((value) => resolve(this, value), (reason) => reject(this, reason))
     } catch (err) {
-      // reject implicitly if any arror in executor
-      reject(this, err)
+      reject(this, err) // reject implicitly if any arror in executor
     }
   }
 
-  /**
-   * Register
-   *
-   * @param onFulfilled (value) => {}
-   * @param onRejected (reason) => {}
-   * @return Promise in the pending status
-   */
   then(onFulfilled, onRejected) {
     const promise1 = this
-    if (!isFunction(onFulfilled) && promise1._state === FULFILLED) {
-      return promise1
-    }
-    if (!isFunction(onRejected) && promise1._state === REJECTED) {
-      return promise1
-    }
-
+    if (!isFunction(onFulfilled) && promise1._state === FULFILLED) return promise1
+    if (!isFunction(onRejected) && promise1._state === REJECTED) return promise1
     const promise2 = dummy()
-
-    const call = (handler) => {
-      assert(promise1._state !== PENDING)
-      setTimeout(() => {
-        let x
-        // invoke handler function
-        try {
-          x = handler.call(globalObject(handler), promise1._value)
-        } catch (err) {
-          reject(promise2, err); return
-        }
-        resolve(promise2, x)
-      }, 0)
-    }
-
     if (isFunction(onFulfilled) && promise1._state === FULFILLED) {
-      call(onFulfilled) // eventually-fulfilled
+      asynchronize(onFulfilled, promise1, promise2)() // immediately-fulfilled
     }
-
     if (isFunction(onRejected) && promise1._state === REJECTED) {
-      call(onRejected) // eventually-rejected
+      asynchronize(onRejected, promise1, promise2)() // immediately-rejected
     }
-    
     if (promise1._state === PENDING) {
       onFulfilled = isFunction(onFulfilled) ? onFulfilled : identity(promise2)
-      promise1._resolveQueue.push({ onFulfilled, call })
+      promise1._resolveQueue.push(asynchronize(onFulfilled, promise1, promise2)) // eventually-fulfilled
       onRejected = isFunction(onRejected) ? onRejected : throwner(promise2)
-      promise1._rejectQueue.push({ onRejected, call })
+      promise1._rejectQueue.push(asynchronize(onRejected, promise1, promise2)) // eventually-rejected
     }
     return promise2
   }
@@ -179,41 +155,21 @@ class Promise {
   finally(onFinally) {
     const promise1 = this
     const promise2 = dummy()
-    // aync invocation
-    const call = (onFinally) => {
-      assert(promise1._state !== PENDING)
-      setTimeout(() => {
-        let x
-        try {
-          x = onFinally.call(globalObject(onFinally))
-        } catch (err) {
-          reject(promise2, err); return
-        }
-        resolve(promise2, x)
-      }, 0)
-    }
     if (isFunction(onFinally) && promise1._state !== PENDING) {
-      call(onFinally)
+      asynchronize(onFinally)()
     }
     if (isFunction(onFinally) && promise1._state === PENDING) {
-      promise1._finallyQueue.push({ onFinally, call })
+      promise1._finallyQueue.push(asynchronize(onFinally, promise1, promise2, true))
     }
-    
     return promise2
   }
 
-  /**
-   * @return Promise
-   */
   static reject(reason) {
     return new Promise((resolve, reject) => {
       reject(reason)
     })
   }
 
-  /**
-   * @return Promise
-   */
   static resolve(value) {
     if (value instanceof Promise) return value
     let promise = new Promise((resolve, reject) => {
@@ -222,25 +178,16 @@ class Promise {
     return promise
   }
 
-  /**
-   * @return Promise
-   */
   static all(iterable) {
-    const promise2 = new Promise((resolve, reject) => {})
+    const promise2 = dummy()
     const arr = Array.from(iterable)
-    if (arr.length === 0 || arr.every(item => !item instanceof Promise)) {
-      
-    }
     const promises = arr.filter(item => item instanceof Promise)
     let length = promises.length
     if (length === 0) {
       fulfill(promise2, undefined); return
     }
     function doResolve(value) {
-      length--
-      if (length === 0) {
-        resolve(promise2, value)
-      }
+      if (--length === 0) resolve(promise2, value)
     }
     for (const promise1 of promises) {
       promise1.then(doResolve, throwner(promise2))
