@@ -19,4 +19,4 @@ Currently this library passed all the test cases of Promises/A+ (https://github.
 
 This is test result:
 
-![](promises_aplus_result.png)
+![](https://i.imgur.com/7ZCgNJX.gif)
