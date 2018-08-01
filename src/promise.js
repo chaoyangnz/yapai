@@ -38,9 +38,9 @@ function reject(promise, reason) {
 
 function afterSettled(promise) {
   promise._finallyQueue.forEach(({ onFinally, call }) => call(onFinally))
-  promise._resolveQueue = [] // clear
-  promise._rejectQueue = [] // clear
-  promise._finallyQueue = [] // clear
+  delete promise._resolveQueue
+  delete promise._rejectQueue
+  delete promise._finallyQueue
 }
 
 // promise resolution procedure, denote as [[Resolve]](promise, x)
@@ -248,6 +248,4 @@ class Promise {
   }
 }
 
-module.exports = {
-  Promise, resolve, reject
-}
+export {Promise, resolve, reject}
