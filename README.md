@@ -1,4 +1,4 @@
-## YAPAI (Yet Another Promise/A+ Implementation)
+## YAPAI (Yet Another Promises/A+ Implementation)
 
 
 ![npm](https://img.shields.io/npm/dt/yapai.svg)
