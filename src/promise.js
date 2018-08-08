@@ -24,7 +24,7 @@ function isObjectOrFunction(x) { if (x === null) return false; const type = type
 function assert(expression) { if (!expression) throw new Error('bug') }
 function dummy() { return new Promise(() => {})}
 function identity(promise) { return (value) => resolve(promise, value) }
-function throwner(promise) { return (reason) => reject(promise, reason) }
+function thrower(promise) { return (reason) => reject(promise, reason) }
 function asyncFunc(handler, promise1, promise2, notFinally = true) { 
   return () => {
     assert(promise1._state !== PENDING)
@@ -65,7 +65,7 @@ export function resolve(promise, x) {
   }
   if (x instanceof Promise) { // 2.3.2 If x is a promise, adopt its state
     if (x._state === PENDING) { // 2.3.2.1 If x is pending, promise must remain pending until x is fulfilled or rejected
-      x.then(identity(promise), throwner(promise)); return
+      x.then(identity(promise), thrower(promise)); return
     }
     if (x._state === FULFILLED) { // 2.3.2.2 If/when x is fulfilled, fulfill promise with the same value
       fulfill(promise, x._value); return
@@ -137,7 +137,7 @@ export class Promise {
     if (promise1._state === PENDING) {
       onFulfilled = isFunction(onFulfilled) ? onFulfilled : identity(promise2)
       queueJob(promise1, 'resolve', asyncFunc(onFulfilled, promise1, promise2)) // eventually-fulfilled
-      onRejected = isFunction(onRejected) ? onRejected : throwner(promise2)
+      onRejected = isFunction(onRejected) ? onRejected : thrower(promise2)
       queueJob(promise1, 'reject', asyncFunc(onRejected, promise1, promise2)) // eventually-rejected
     }
     return promise2
@@ -185,7 +185,7 @@ export class Promise {
       if (--length === 0) resolve(promise2, value)
     }
     for (const promise1 of promises) {
-      promise1.then(doResolve, throwner(promise2))
+      promise1.then(doResolve, thrower(promise2))
     }
   }
 }
