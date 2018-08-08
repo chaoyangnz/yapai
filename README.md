@@ -7,6 +7,10 @@
 
 A minimal Promises/A+ complaint `Promise` implementation with 200 lines of code. This implementation is not production ready but for learning the in-depth mechanism of a Promise and its contract to users.
 
+## Install
+
+`npm install yapai --save`
+
 ## Build
 
 `npm run build`
